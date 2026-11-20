@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Snake Arena</string>
+    <string name="title_activity_main">Snake Arena</string>
+    <string name="package_name">com.snakearena.arcade</string>
+    <string name="custom_url_scheme">com.snakearena.arcade</string>
+    <!-- Official Google AdMob Android Test App ID -->
+    <string name="admob_app_id">ca-app-pub-3940256099942544~3347511713</string>
+</resources>

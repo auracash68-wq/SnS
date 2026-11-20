@@ -1,0 +1,225 @@
+name: Android Release AAB Build (Manual)
+
+# Strictly manual trigger — never runs automatically on push or PR
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_production_readiness:
+        description: 'Type RELEASE to confirm AdMob production IDs and Play Store signing secrets are configured'
+        required: true
+        default: ''
+        type: string
+
+concurrency:
+  group: android-release-aab
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+  BUN_VERSION: '1.4.4'
+  JAVA_VERSION: '21'
+  ANDROID_COMPILE_SDK: '36'
+  ANDROID_BUILD_TOOLS: '36.0.0'
+  GRADLE_JVM_ARGS: '-Xmx3072m -XX:MaxMetaspaceSize=768m'
+
+jobs:
+  build-android-release-aab:
+    name: Build Signed Android Release AAB
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Validate manual release confirmation and signing secrets
+        shell: bash
+        env:
+          HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+          HAS_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD != '' }}
+          HAS_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS != '' }}
+          HAS_KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD != '' }}
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.confirm_production_readiness }}" != "RELEASE" ]; then
+            echo "::error::Confirmation input must be exactly 'RELEASE' to run a Play Store release bundle build."
+            exit 1
+          fi
+
+          MISSING=()
+          [ "$HAS_KEYSTORE" != "true" ] && MISSING+=("ANDROID_KEYSTORE_BASE64")
+          [ "$HAS_STORE_PASS" != "true" ] && MISSING+=("ANDROID_KEYSTORE_PASSWORD")
+          [ "$HAS_KEY_ALIAS" != "true" ] && MISSING+=("ANDROID_KEY_ALIAS")
+          [ "$HAS_KEY_PASS" != "true" ] && MISSING+=("ANDROID_KEY_PASSWORD")
+
+          if [ ${#MISSING[@]} -gt 0 ]; then
+            echo "::error::Missing required GitHub Actions signing secrets: ${MISSING[*]}"
+            echo "Configure them under Repository Settings -> Secrets and variables -> Actions before running this workflow."
+            echo "Release builds never fall back to debug signing."
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Set up Bun ${{ env.BUN_VERSION }}
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache Bun package store
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install locked dependencies
+        shell: bash
+        run: bun install --frozen-lockfile
+
+      - name: Run dependency security audit
+        shell: bash
+        run: bun audit --audit-level=high
+
+      - name: Run TypeScript type check and production web build
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run lint
+          npm run build
+          test -s dist/index.html
+
+      - name: Sync Capacitor Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx cap sync android
+          test -s android/app/src/main/assets/public/index.html
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }} (Temurin)
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Verify Android SDK ${{ env.ANDROID_COMPILE_SDK }} and Build-Tools ${{ env.ANDROID_BUILD_TOOLS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -name sdkmanager -type f 2>/dev/null | head -n 1 || true)"
+          fi
+
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+
+          MISSING_PKGS=()
+          [ ! -d "$SDK_ROOT/platforms/android-${ANDROID_COMPILE_SDK}" ] && MISSING_PKGS+=("platforms;android-${ANDROID_COMPILE_SDK}")
+          [ ! -d "$SDK_ROOT/build-tools/${ANDROID_BUILD_TOOLS}" ] && MISSING_PKGS+=("build-tools;${ANDROID_BUILD_TOOLS}")
+          if [ ${#MISSING_PKGS[@]} -gt 0 ]; then
+            "$SDKMANAGER" --install "${MISSING_PKGS[@]}"
+          fi
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Ensure Gradle wrapper is executable
+        shell: bash
+        run: chmod +x android/gradlew
+
+      - name: Run Android unit tests and lint
+        working-directory: android
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testReleaseUnitTest --no-daemon --stacktrace -Dorg.gradle.jvmargs="${GRADLE_JVM_ARGS}"
+          ./gradlew :app:lintRelease --no-daemon --stacktrace -Dorg.gradle.jvmargs="${GRADLE_JVM_ARGS}"
+
+      - name: Decode signing keystore to temporary runner directory
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          KEYSTORE_FILE="${RUNNER_TEMP}/release-signing.keystore"
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$KEYSTORE_FILE"
+          chmod 600 "$KEYSTORE_FILE"
+          test -s "$KEYSTORE_FILE"
+
+      - name: Build signed Android Release AAB
+        working-directory: android
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release-signing.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew :app:bundleRelease --no-daemon --stacktrace -Dorg.gradle.jvmargs="${GRADLE_JVM_ARGS}"
+
+      - name: Verify Release AAB integrity and signature
+        id: verify_aab
+        shell: bash
+        run: |
+          set -euo pipefail
+          AAB_PATH="android/app/build/outputs/bundle/release/app-release.aab"
+          if [ ! -s "$AAB_PATH" ]; then
+            echo "::error::Expected Release AAB is missing or empty at $AAB_PATH."
+            exit 1
+          fi
+
+          jarsigner -verify -strict "$AAB_PATH" > /dev/null
+
+          ARTIFACT_DIR="${RUNNER_TEMP}/aab-artifact"
+          mkdir -p "$ARTIFACT_DIR"
+          AAB_FILENAME="snake-arena-release-build${GITHUB_RUN_NUMBER}.aab"
+          cp "$AAB_PATH" "${ARTIFACT_DIR}/${AAB_FILENAME}"
+
+          (
+            cd "$ARTIFACT_DIR"
+            sha256sum "$AAB_FILENAME" > SHA256SUMS.txt
+          )
+
+          echo "artifact_dir=$ARTIFACT_DIR" >> "$GITHUB_OUTPUT"
+          echo "aab_filename=$AAB_FILENAME" >> "$GITHUB_OUTPUT"
+          echo "aab_size=$(du -h "${ARTIFACT_DIR}/${AAB_FILENAME}" | cut -f1)" >> "$GITHUB_OUTPUT"
+          echo "aab_sha256=$(cut -d' ' -f1 "${ARTIFACT_DIR}/SHA256SUMS.txt")" >> "$GITHUB_OUTPUT"
+
+      - name: Remove temporary signing keystore
+        if: always()
+        shell: bash
+        run: rm -f "${RUNNER_TEMP}/release-signing.keystore"
+
+      - name: Upload Android Release AAB artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Snake-Arena-Android-Release-AAB
+          path: ${{ steps.verify_aab.outputs.artifact_dir }}
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Publish release build summary
+        shell: bash
+        run: |
+          {
+            echo "## Snake Arena — Signed Android Release AAB"
+            echo ""
+            echo "| Property | Value |"
+            echo "| :--- | :--- |"
+            echo "| **Artifact Name** | \`Snake-Arena-Android-Release-AAB\` |"
+            echo "| **AAB Filename** | \`${{ steps.verify_aab.outputs.aab_filename }}\` |"
+            echo "| **AAB Size** | \`${{ steps.verify_aab.outputs.aab_size }}\` |"
+            echo "| **SHA-256** | \`${{ steps.verify_aab.outputs.aab_sha256 }}\` |"
+            echo ""
+            echo "> Before submitting to Google Play Console, verify that \`android/app/src/main/AndroidManifest.xml\` and \`src/ads/adConfig.ts\` use your live production AdMob App ID and Ad Unit IDs instead of Google's test IDs."
+          } >> "$GITHUB_STEP_SUMMARY"

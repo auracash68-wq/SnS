@@ -1,0 +1,33 @@
+import type { CapacitorConfig } from '@capacitor/cli';
+
+const config: CapacitorConfig = {
+  appId: 'com.snakearena.arcade',
+  appName: 'Snake Arena',
+  webDir: 'dist',
+  server: {
+    androidScheme: 'https',
+  },
+  android: {
+    backgroundColor: '#05080F',
+    allowMixedContent: false,
+    captureInput: false,
+    webContentsDebuggingEnabled: false,
+  },
+  plugins: {
+    SplashScreen: {
+      launchShowDuration: 1200,
+      launchAutoHide: false,
+      backgroundColor: '#05080F',
+      androidSplashResourceName: 'splash',
+      androidScaleType: 'CENTER_CROP',
+      showSpinner: false,
+    },
+    StatusBar: {
+      style: 'DARK',
+      backgroundColor: '#05080F',
+      overlaysWebView: false,
+    },
+  },
+};
+
+export default config;

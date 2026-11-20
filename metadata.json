@@ -1,0 +1,6 @@
+{
+  "name": "Snake Arena",
+  "description": "A sleek, responsive 9:16 portrait 2D Snake Arcade game with progressive difficulty, power-ups, Web Audio sound effects, and mobile touch/swipe controls.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

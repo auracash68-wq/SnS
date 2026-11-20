@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Subtle arena grid frame inside safe zone -->
+    <path
+        android:fillColor="#0E1729"
+        android:strokeColor="#1E293B"
+        android:strokeWidth="1.5"
+        android:pathData="M28,24 L80,24 A4,4 0 0,1 84,28 L84,80 A4,4 0 0,1 80,84 L28,84 A4,4 0 0,1 24,80 L24,28 A4,4 0 0,1 28,24 Z" />
+
+    <!-- Neon emerald snake body S-curve -->
+    <path
+        android:strokeColor="#22C55E"
+        android:strokeWidth="9"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M34,74 L58,74 Q66,74 66,66 Q66,58 58,58 L44,58 Q36,58 36,50 Q36,42 44,42 L60,42" />
+
+    <!-- Snake head -->
+    <path
+        android:fillColor="#4ADE80"
+        android:pathData="M56,35 L66,35 A7,7 0 0,1 73,42 A7,7 0 0,1 66,49 L56,49 A6,6 0 0,1 50,43 L50,41 A6,6 0 0,1 56,35 Z" />
+
+    <!-- Snake eyes -->
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M65,38.5 A2.2,2.2 0 1,0 65,42.9 A2.2,2.2 0 1,0 65,38.5 Z" />
+    <path
+        android:fillColor="#05080F"
+        android:pathData="M65.8,39.7 A1.1,1.1 0 1,0 65.8,41.9 A1.1,1.1 0 1,0 65.8,39.7 Z" />
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M65,43.5 A2.2,2.2 0 1,0 65,47.9 A2.2,2.2 0 1,0 65,43.5 Z" />
+    <path
+        android:fillColor="#05080F"
+        android:pathData="M65.8,44.7 A1.1,1.1 0 1,0 65.8,46.9 A1.1,1.1 0 1,0 65.8,44.7 Z" />
+
+    <!-- Ruby food orb -->
+    <path
+        android:fillColor="#FB7185"
+        android:pathData="M74,60 A5.5,5.5 0 1,0 74,71 A5.5,5.5 0 1,0 74,60 Z" />
+    <path
+        android:fillColor="#FFE4E6"
+        android:pathData="M72.3,62.3 A1.6,1.6 0 1,0 72.3,65.5 A1.6,1.6 0 1,0 72.3,62.3 Z" />
+</vector>
